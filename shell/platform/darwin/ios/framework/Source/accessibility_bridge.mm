@@ -246,6 +246,21 @@ void AccessibilityBridge::HandleEvent(NSDictionary<NSString*, id>* annotatedEven
     NSString* message = annotatedEvent[@"data"][@"message"];
     UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification, message);
   }
+
+  if ([type isEqualToString:@"requestFocus"]) {
+
+    NSInteger uid = [annotatedEvent[@"data"][@"targetId"] integerValue];
+
+    if (!uid) return;
+
+    SemanticsObject* object = objects_.get()[@(uid)];
+
+    if (!object) {
+      return;
+    }
+
+    UIAccessibilityPostNotification(UIAccessibilityScreenChangedNotification, object);
+  }
 }
 
 fml::WeakPtr<AccessibilityBridge> AccessibilityBridge::GetWeakPtr() {
