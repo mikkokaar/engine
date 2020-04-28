@@ -45,6 +45,9 @@ void AccessibilityBridge::UpdateSemantics(flutter::SemanticsNodeUpdates nodes,
                                           flutter::CustomAccessibilityActionUpdates actions) {
   BOOL layoutChanged = NO;
   BOOL scrollOccured = NO;
+  
+  SemanticsObject* focusedObject = nil;
+
   for (const auto& entry : actions) {
     const flutter::CustomAccessibilityAction& action = entry.second;
     actions_[action.id] = action;
@@ -54,6 +57,11 @@ void AccessibilityBridge::UpdateSemantics(flutter::SemanticsNodeUpdates nodes,
     SemanticsObject* object = GetOrCreateObject(node.id, nodes);
     layoutChanged = layoutChanged || [object nodeWillCauseLayoutChange:&node];
     scrollOccured = scrollOccured || [object nodeWillCauseScroll:&node];
+
+    if (node.HasFlag(flutter::SemanticsFlags::kIsFocused)) {
+      focusedObject = object;
+    }
+
     [object setSemanticsNode:&node];
     NSUInteger newChildCount = node.childrenInTraversalOrder.size();
     NSMutableArray* newChildren =
@@ -135,7 +143,10 @@ void AccessibilityBridge::UpdateSemantics(flutter::SemanticsNodeUpdates nodes,
   [objects_ removeObjectsForKeys:doomed_uids];
 
   layoutChanged = layoutChanged || [doomed_uids count] > 0;
-  if (routeChanged) {
+  
+  if (focusedObject != nil && routeChanged) {
+    UIAccessibilityPostNotification(UIAccessibilityScreenChangedNotification, focusedObject);
+  } else if (routeChanged) {
     NSString* routeName = [lastAdded routeName];
     UIAccessibilityPostNotification(UIAccessibilityScreenChangedNotification, routeName);
   } else if (layoutChanged) {
@@ -234,6 +245,21 @@ void AccessibilityBridge::HandleEvent(NSDictionary<NSString*, id>* annotatedEven
   if ([type isEqualToString:@"announce"]) {
     NSString* message = annotatedEvent[@"data"][@"message"];
     UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification, message);
+  }
+
+  if ([type isEqualToString:@"requestFocus"]) {
+
+    NSInteger uid = [annotatedEvent[@"data"][@"targetId"] integerValue];
+
+    if (!uid) return;
+
+    SemanticsObject* object = objects_.get()[@(uid)];
+
+    if (!object) {
+      return;
+    }
+
+    UIAccessibilityPostNotification(UIAccessibilityScreenChangedNotification, object);
   }
 }
 
